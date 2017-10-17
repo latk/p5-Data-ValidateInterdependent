@@ -25,6 +25,18 @@ subtest q(it does not die when unknowns are ignored) => sub {
     is_deeply $valid, {};
 };
 
+subtest q(can ignore a specific parameter) => sub {
+    my $v = new->ignore_param('x');
+    is_deeply $v->run(), {}, q(empty params);
+    is_deeply $v->run(x => 1), {}, q(ignored param);
+    throws_ok { $v->run(y => 2) }
+        qr/^Unknown parameters: y at /,
+        q(different param);
+    throws_ok { $v->run(x => 1, y => 2) }
+        qr/^Unknown parameters: y at /,
+        q(unknown and ignored params);
+};
+
 subtest q(it can add constant values) => sub {
     my $valid = new->const(x => 'a', b => 3)->run();
     is_deeply $valid, { b => 3, x => 'a' };
@@ -64,7 +76,12 @@ subtest q(rule must provide all declared variables) => sub {
         });
 
     throws_ok { $v->run() }
-        qr/Validation rule "y x" must return parameter y at /;
+        qr/^Validation rule "y x" must return parameter y at /;
+};
+
+subtest q(rule must provide at least one variable) => sub {
+    throws_ok { new->validate([], '$x', sub { ... }) }
+        qr/^Validation rule must provide at least one variable at /;
 };
 
 subtest q(rule can use parameters) => sub {
@@ -92,13 +109,13 @@ subtest q(rule can use previous variables) => sub {
 
 subtest q(rule dependencies must have been declared) => sub {
     throws_ok { new->validate(['y', 'x'], ['b', 'a'], sub { ... }) }
-        qr/Validation rule "y x" depends on undeclared variables: a, b at /;
+        qr/^Validation rule "y x" depends on undeclared variables: a, b at /;
 };
 
 subtest q(rule dependency cannot be declared twice) => sub {
     my $v = new->validate('x', [], sub { ... });
     throws_ok { $v->validate('x', [], sub { ... }) }
-        qr/Variable cannot be declared twice: x at /;
+        qr/^Variable cannot be declared twice: x at /;
 };
 
 subtest q(const values also count as declared variable) => sub {
@@ -128,6 +145,40 @@ subtest q(params also count as declared variable) => sub {
         })
         ->run(x => 2);
     is_deeply $valid, { x => 2, a => 8 };
+};
+
+subtest q(can get list of provided variables) => sub {
+    my @names = new
+        ->const(c1 => 1, c2 => 2)
+        ->param('p1')
+        ->validate('v1', 'c2', sub { ... })
+        ->provided;
+    @names = sort @names;
+    is "@names", "c1 c2 p1 v1";
+};
+
+subtest q(can get list of unused variables) => sub {
+    my @names = new
+        ->const(c1 => 1, c2 => 2)
+        ->param('p1')
+        ->validate('v1', 'c2', sub { ... })
+        ->unused;
+    @names = sort @names;
+    is "@names", "c1 p1 v1";
+};
+
+subtest q(selecting variables marks them as used) => sub {
+    my @names = new
+        ->param(qw( a b c ))
+        ->select('b')
+        ->unused;
+    @names = sort @names;
+    is "@names", "a c";
+};
+
+subtest q(select fails if variable does not exist) => sub {
+    throws_ok { new->param('a')->select('b') }
+        qr/^Select depends on undeclared variables: b at /;
 };
 
 done_testing;

@@ -103,12 +103,17 @@ has _variables => (
     default => sub { {} },
 );
 
+has _unused_variables => (
+    is => 'ro',
+    default => sub { {} },
+);
+
 has _rules => (
     is => 'ro',
     default => sub { [] },
 );
 
-has _expected_params => (
+has _known_params => (
     is => 'ro',
     default => sub { {} },
 );
@@ -128,23 +133,40 @@ sub _declare_variable {
     my ($self, @names) = @_;
 
     my $known = $self->_variables;
+    my $unused = $self->_unused_variables;
     for my $var (@names) {
         if ($known->{$var}) {
             croak qq(Variable cannot be declared twice: $var);
         }
         else {
             $known->{$var} = 1;
+            $unused->{$var} = 1;  # all are unused initially
         }
     }
 
     return;
 }
 
+sub _declare_usage {
+    my ($self, $name, @vars) = @_;
+
+    my $known_variables = $self->_variables;
+    my $unused = $self->_unused_variables;
+
+    if (my @unknown = grep { not $known_variables->{$_} } @vars) {
+        croak qq($name depends on undeclared variables: ), join q(, ) => sort @unknown;
+    }
+
+    delete @$unused{@vars};
+
+    return;
+}
+
 sub _declare_param {
     my ($self, @names) = @_;
-    my $expected_params = $self->_expected_params;
+    my $known_params = $self->_known_params;
 
-    $expected_params->{$_} = 1 for @names;
+    $known_params->{$_} = 1 for @names;
 
     return;
 }
@@ -271,8 +293,12 @@ B<Example:> Reading multiple inputs:
 
 sub validate {
     my ($self, $output, $input, $callback) = @_;
-    $output = [_parse_params($output)];  # TODO must not be empty
+    $output = [_parse_params($output)];
     $input = [_parse_params($input)];
+
+    if (not @$output) {
+        croak q(Validation rule must provide at least one variable);
+    }
 
     my @vars;
     my @args;
@@ -286,13 +312,7 @@ sub validate {
     }
 
     _declare_param($self, @args) if @args;
-
-    my $known_variables = $self->_variables;
-
-    if (my @unknown = grep { not $known_variables->{$_} } @vars) {
-        croak qq(Validation rule "@$output" depends on undeclared variables: ), join q(, ) => sort @unknown;
-    }
-
+    _declare_usage($self, qq(Validation rule "@$output"), @vars);
     _declare_variable($self, @$output);
 
     push @{ $self->_rules }, [rule => $output, $input, $callback];
@@ -326,8 +346,8 @@ sub run {
     my ($self, %params) = @_;
 
     unless ($self->_ignore_unknown) {
-        my $expected_params = $self->_expected_params;
-        if (my @unknown = grep { not $expected_params->{$_} } keys %params) {
+        my $known_params = $self->_known_params;
+        if (my @unknown = grep { not $known_params->{$_} } keys %params) {
             croak qq(Unknown parameters: ), join q(, ) => sort @unknown;
         }
     }
@@ -402,13 +422,68 @@ sub ignore_unknown {
     return $self;
 }
 
+=head2 ignore_param
+
+    $validator = $validator->ignore_param($name, ...);
+
+Ignore a specific parameter.
+
+=cut
+
+sub ignore_param {
+    my ($self, @names) = @_;
+    _declare_param($self, @names);
+    return $self;
+}
+
 =head2 provided
 
     my @names = $validator->provided;
 
-TODO
+Get a list of all provided variables.
+The order is unspecified.
 
 =cut
+
+sub provided {
+    my ($self) = @_;
+    return keys %{ $self->_variables };
+}
+
+=head2 unused
+
+    my @names = $validator->unused;
+
+Get a list of all variables that are provided but not used.
+The order is unspecified.
+
+=cut
+
+sub unused {
+    my ($self) = @_;
+    return keys %{ $self->_unused_variables };
+}
+
+=head2 select
+
+    $validator = $validator->select(@names);
+
+Mark variables as used, and ensure that these variables exist.
+
+This is convenient when the validator is assembled in different places,
+and you want to make sure that certain variables are provided.
+
+The output variables may include variables that were not selected.
+This method does not list all output variables,
+but just ensures their presence.
+
+=cut
+
+sub select :method {
+    my ($self, @names) = @_;
+    _declare_usage($self, q(Select), @names);
+    return $self;
+}
 
 =head1 SUPPORT
 
