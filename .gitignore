@@ -1,5 +1,7 @@
-/blib
-/_build
+/blib/
+/_build/
+/.build/
 /Build
 /MYMETA.json
 /MYMETA.yml
+/Data-ValidateInterdependent-*

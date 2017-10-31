@@ -59,7 +59,7 @@ allows us to check basic consistency properties when the validator is assembled:
 
 =item *
 
-The validator will provide all declared input variables.
+The validator will provide all declared output variables.
 Because there is no branching,
 it is not possible to forget a variable.
 
@@ -330,8 +330,8 @@ B<%params> is a hash of all input parameters.
 The hash may be empty.
 
 B<Returns:> a hashref with all output variables.
-You may want to remove variables from this hashref
-if some validation rules needed helper variables.
+If your validation rules assigned helper variables,
+you may want to delete them from this hashref before further processing.
 
 B<Throws:> when unknown parameters were provided
 (but see L<ignore_unknown()|/ignore_unknown>).
