@@ -1,0 +1,31 @@
+language: perl
+perl:
+  - "5.26"
+  - "5.24"
+  - "5.20"
+  - "5.14"
+env:
+  global:
+    - builddir=./build-CI
+    # try to parse the "perlbrew list" output to get latest perl version
+    - stableperl="$(perlbrew list | grep -o '(.*)' | sort | tail -1 | tr -d '()')"
+    - RELEASE_TESTING=1
+    - AUTOMATED_TESTING=1
+    - EXTENDED_TESTING=1
+    - AUTHOR_TESTING=1
+    # Perl 5.26 won't load modules from inc/ otherwise
+    - PERL_USE_UNSAFE_INC=1
+before_install:
+  - perlbrew list
+  - echo $stableperl
+  - "perlbrew exec --with $stableperl cpanm --quiet --notest --installdeps --with-develop ."
+  - "perlbrew exec --with $stableperl dzil build --in $builddir"
+install:
+  - '(cd $builddir && cpanm --quiet --notest --installdeps --with-configure .)'
+script:
+  # Check that built dist works
+  - '(cd $builddir && perl Build.PL && ./Build && prove -br t)'
+  # Check that repo itself works
+  - 'perl Build.PL && ./Build && ./Build test'
+sudo: false
+# vim: sw=2
